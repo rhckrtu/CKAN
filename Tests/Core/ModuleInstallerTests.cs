@@ -824,6 +824,42 @@ namespace Tests.Core
         }
 
         [Test]
+        public void DetectsZipSlipVulnerability()
+        {
+            // Create a ZIP file with an entry that tries to exploit Zip Slip
+            var zip = ZipFile.Create(new MemoryStream());
+            zip.BeginUpdate();
+            zip.AddDirectory("Ships");
+            zip.Add(new ZipEntry("Ships/../../outside.txt") { Size = 0, CompressedSize = 0 });
+            zip.CommitUpdate();
+
+            var mod = CkanModule.FromJson(@"
+                {
+                    ""spec_version"": 1,
+                    ""identifier"": ""AwesomeMod"",
+                    ""version"": ""1.0.0"",
+                    ""download"": ""https://awesomemod.example/AwesomeMod.zip"",
+                    ""install"": [
+                        {
+                            ""file"": ""Ships/../../outside.txt"",
+                            ""install_to"": ""Ships""
+                        }
+                    ]
+                }");
+
+            // Act
+            List<InstallableFile> results;
+            using (var ksp = new DisposableKSP())
+            {
+                results = mod.install.First().FindInstallableFiles(zip, ksp.KSP);
+            }
+
+            // Assert
+            // The result should be empty or should have an appropriate exception if the Zip Slip is detected
+            Assert.That(results, Is.Empty, "The ZIP file should not contain any installable files due to Zip Slip vulnerability.");
+        }
+
+        [Test]
         public void Replace_WithCompatibleModule_Succeeds()
         {
             // Arrange
