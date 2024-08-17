@@ -227,21 +227,14 @@ namespace Tests.Core
 
             CkanModule bugged_mod = TestData.DogeCoinFlag_101_bugged_module();
 
-            Assert.Throws<BadMetadataKraken>(delegate
+            var exc = Assert.Throws<BadMetadataKraken>(delegate
                 {
                     ModuleInstaller.FindInstallableFiles(bugged_mod, TestData.DogeCoinFlagZip(), ksp.KSP);
                 });
 
-            try
-            {
-                ModuleInstaller.FindInstallableFiles(bugged_mod, TestData.DogeCoinFlagZip(), ksp.KSP);
-            }
-            catch (BadMetadataKraken ex)
-            {
-                // Make sure our module information is attached.
-                Assert.IsNotNull(ex.module);
-                Assert.AreEqual(bugged_mod.identifier, ex.module.identifier);
-            }
+            // Make sure our module information is attached.
+            Assert.IsNotNull(exc.module);
+            Assert.AreEqual(bugged_mod.identifier, exc.module.identifier);
         }
 
 #pragma warning disable 0414
@@ -824,39 +817,34 @@ namespace Tests.Core
         }
 
         [Test]
-        public void DetectsZipSlipVulnerability()
+        public void FindInstallableFiles_ZipSlip_Throws()
         {
+            // Arrange
             // Create a ZIP file with an entry that tries to exploit Zip Slip
             var zip = ZipFile.Create(new MemoryStream());
             zip.BeginUpdate();
-            zip.AddDirectory("Ships");
-            zip.Add(new ZipEntry("Ships/../../outside.txt") { Size = 0, CompressedSize = 0 });
+            zip.AddDirectory("AwesomeMod");
+            zip.Add(new ZipEntry("AwesomeMod/../../../outside.txt") { Size = 0, CompressedSize = 0 });
             zip.CommitUpdate();
-
+            // Create a mod that would install the top folder of that path
             var mod = CkanModule.FromJson(@"
                 {
                     ""spec_version"": 1,
                     ""identifier"": ""AwesomeMod"",
                     ""version"": ""1.0.0"",
-                    ""download"": ""https://awesomemod.example/AwesomeMod.zip"",
-                    ""install"": [
-                        {
-                            ""file"": ""Ships/../../outside.txt"",
-                            ""install_to"": ""Ships""
-                        }
-                    ]
+                    ""download"": ""https://awesomemod.example/AwesomeMod.zip""
                 }");
 
-            // Act
-            List<InstallableFile> results;
-            using (var ksp = new DisposableKSP())
-            {
-                results = mod.install.First().FindInstallableFiles(zip, ksp.KSP);
-            }
-
-            // Assert
-            // The result should be empty or should have an appropriate exception if the Zip Slip is detected
-            Assert.That(results, Is.Empty, "The ZIP file should not contain any installable files due to Zip Slip vulnerability.");
+            // Act / Assert
+            Assert.Throws<BadInstallLocationKraken>(
+                delegate
+                {
+                    using (var ksp = new DisposableKSP())
+                    {
+                        var contents = ModuleInstaller.FindInstallableFiles(mod, zip, ksp.KSP);
+                    }
+                },
+                "Kraken should be thrown if ZIP file attempts to exploit Zip Slip vulnerability");
         }
 
         [Test]
