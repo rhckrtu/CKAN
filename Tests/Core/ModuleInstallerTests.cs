@@ -740,6 +740,54 @@ namespace Tests.Core
             });
         }
 
+        [Test]
+        public void CheckExtractedFiles()
+        {
+            string mod_file_name = "DogeCoinFlag/Flags/dogecoin2.png";
+
+            // Create a new disposable KSP instance to run the test on.
+            Assert.DoesNotThrow(delegate
+            {
+                
+                    using (var repo = new TemporaryRepository(TestData.DogeCoinFlag_101ZipSlip()))
+                    using (var repoData = new TemporaryRepositoryData(nullUser, repo.repo))
+                    using (var ksp = new DisposableKSP())
+                    using (var config = new FakeConfiguration(ksp.KSP, ksp.KSP.Name))
+                    using (var manager = new GameInstanceManager(nullUser, config)
+                        {
+                            CurrentInstance = ksp.KSP
+                        })
+                    {
+                        var regMgr = RegistryManager.Instance(manager.CurrentInstance, repoData.Manager);
+                        var registry = regMgr.registry;
+                        registry.RepositoriesClear();
+                        registry.RepositoriesAdd(repo.repo);
+
+                        // Copy the zip file to the cache directory.
+                        manager.Cache.Store(TestData.DogeCoinFlag_101ZipSlip_module(),
+                                            TestData.DogeCoinFlagZip(),
+                                            new Progress<int>(percent => {}));
+
+                        // Attempt to install it.
+                        var modules = new List<CkanModule> { TestData.DogeCoinFlag_101ZipSlip_module() };
+
+                        HashSet<string> possibleConfigOnlyDirs = null;
+                        new ModuleInstaller(ksp.KSP, manager.Cache, nullUser)
+                            .InstallList(modules,
+                                         new RelationshipResolverOptions(),
+                                         RegistryManager.Instance(manager.CurrentInstance, repoData.Manager),
+                                         ref possibleConfigOnlyDirs);
+
+                        // Check that the module is installed.
+                        string mod_file_path = Path.Combine(ksp.KSP.game.PrimaryModDirectory(ksp.KSP), mod_file_name);
+
+                        Assert.IsTrue(File.Exists(mod_file_path));
+                    }
+                
+            });
+        }
+
+
         [TestCase("Ships")]
         [TestCase("Ships/VAB")]
         [TestCase("Ships/SPH")]
@@ -822,6 +870,43 @@ namespace Tests.Core
                     results.First().destination);
             }
         }
+
+        /* 
+        [Test]
+        public void DetectsZipSlipVulnerability()
+        {
+            // Create a ZIP file with an entry that tries to exploit Zip Slip
+            var zip = ZipFile.Create(new MemoryStream());
+            zip.BeginUpdate();
+            zip.AddDirectory("Ships");
+            zip.Add(new ZipEntry("Ships/../../outside.txt") { Size = 0, CompressedSize = 0 });
+            zip.CommitUpdate();
+
+            var mod = CkanModule.FromJson(@"
+                {
+                    ""spec_version"": 1,
+                    ""identifier"": ""AwesomeMod"",
+                    ""version"": ""1.0.0"",
+                    ""download"": ""https://awesomemod.example/AwesomeMod.zip"",
+                    ""install"": [
+                        {
+                            ""file"": ""Ships/../../outside.txt"",
+                            ""install_to"": ""Ships""
+                        }
+                    ]
+                }");
+
+            // Act
+            List<InstallableFile> results;
+            using (var ksp = new DisposableKSP())
+            {
+                results = mod.install.First().FindInstallableFiles(zip, ksp.KSP);
+            }
+
+            // Assert
+            // The result should be empty or should have an appropriate exception if the Zip Slip is detected
+            Assert.That(results, Is.Empty, "The ZIP file should not contain any installable files due to Zip Slip vulnerability.");
+        }*/
 
         [Test]
         public void Replace_WithCompatibleModule_Succeeds()
